@@ -1,75 +1,53 @@
 <?php
-// botmaster2.php
+// Cargar el archivo de configuración JSON
+$config = json_decode(file_get_contents("botconfig.json"), true);
 
-if ($_SERVER["REQUEST_METHOD"] !== "POST") {
-    http_response_code(405);
-    echo "Método no permitido";
-    exit;
+// Verificar que los datos de configuración están presentes
+if (!$config || !isset($config["token"]) || !isset($config["chat_id"])) {
+    die("Error: No se ha encontrado el token o chat_id en el archivo de configuración.");
 }
 
-// Leer datos POST
-$data     = $_POST["data"]     ?? "";
-$keyboard = $_POST["keyboard"] ?? "";
+$token = $config["token"];
+$chat_id = $config["chat_id"];
 
-$configPath = __DIR__ . "/botconfig.json";
+// Mensaje a enviar
+$message = "¡Hola, este es un mensaje de prueba desde el bot!";
 
-if (!file_exists($configPath)) {
-    http_response_code(500);
-    echo "Archivo de configuración no encontrado";
-    exit;
-}
+// URL de la API de Telegram para enviar mensajes
+$url = "https://api.telegram.org/bot$token/sendMessage";
 
-$config  = json_decode(file_get_contents($configPath), true);
-$token   = $config["token"]    ?? null;
-$chat_id = $config["chat_id"]  ?? null;
+// Inicializar cURL
+$ch = curl_init();
 
-if (!$token || !$chat_id || !$data) {
-    http_response_code(400);
-    echo "Faltan datos necesarios (token, chat_id o data)";
-    exit;
-}
-
-// Preparar mensaje
-$mensaje = [
-    "chat_id"    => $chat_id,
-    "text"       => $data,
-    "parse_mode" => "HTML"
-];
-
-// Si hay teclado inline (botones)
-if (!empty($keyboard)) {
-    $decodedKeyboard = json_decode($keyboard, true);
-    if (json_last_error() === JSON_ERROR_NONE) {
-        $mensaje["reply_markup"] = $decodedKeyboard;
-    } else {
-        http_response_code(400);
-        echo "El teclado (keyboard) no es un JSON válido.";
-        exit;
-    }
-}
-
-// Enviar a Telegram
-$url = "https://api.telegram.org/bot{$token}/sendMessage";
-
-$ch = curl_init($url);
+// Configuración de cURL para enviar la solicitud POST
+curl_setopt($ch, CURLOPT_URL, $url);
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 curl_setopt($ch, CURLOPT_POST, true);
-curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($mensaje));
-curl_setopt($ch, CURLOPT_HTTPHEADER, ["Content-Type: application/json"]);
+curl_setopt($ch, CURLOPT_POSTFIELDS, [
+    'chat_id' => $chat_id,
+    'text' => $message
+]);
 
+// Ejecutar la solicitud cURL y obtener la respuesta
 $response = curl_exec($ch);
-$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-$error    = curl_error($ch);
-curl_close($ch);
 
 // Manejo de errores
-if ($httpCode !== 200) {
-    file_put_contents("error_botmaster.log", "Error HTTP $httpCode: $response\n", FILE_APPEND);
-    http_response_code($httpCode);
-    echo "Error al enviar el mensaje al bot. Código HTTP: $httpCode";
-    exit;
+if ($response === false) {
+    echo 'Error en cURL: ' . curl_error($ch);
+    exit();
 }
 
-// Todo OK
-echo $response;
+// Comprobar el código de estado HTTP
+$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+if ($httpCode != 200) {
+    echo "Error HTTP $httpCode: " . $response;
+    exit();
+}
+
+// Cerrar cURL
+curl_close($ch);
+
+// Mostrar el resultado de la solicitud
+echo "Mensaje enviado correctamente: " . $response;
 ?>
+
